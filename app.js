@@ -134,14 +134,46 @@ setInterval(() => {
 $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
 
 // ================================================================
-//  DETEKSI KONEKSI FIREBASE REALTIME
-//  .info/connected berubah otomatis saat WiFi putus/nyambung
+//  DETEKSI KONEKSI — 3 LAPIS supaya responsif
+//
+//  Lapis 1: navigator.onLine → deteksi cepat saat kabel/WiFi putus
+//  Lapis 2: interval cek setiap 3 detik → backup jika event tidak fire
+//  Lapis 3: .info/connected Firebase → konfirmasi dari sisi Firebase
 // ================================================================
-onValue(ref(db, ".info/connected"), snap => {
-  const connected  = snap.val() === true;
+
+// Fungsi utama set status WiFi — dipanggil dari semua lapis
+function setWifiStatus(connected) {
+  if (state.wifiOnline === connected) return; // tidak berubah, skip
   state.wifiOnline = connected;
+
+  if (!connected) {
+    state.loraOnline           = false;
+    state.loraOfflineSince     = state.loraOfflineSince || Date.now();
+    state.loraOfflineEmailSent = state.loraOfflineEmailSent || false;
+    updateLoraStatus(false, "wifi");
+  } else {
+    if (!state.loraOnline) {
+      const since = $("loraSince");
+      if (since) since.textContent = "Menunggu data LoRa...";
+    }
+  }
   updateLedRow();
   console.log("[WiFi]", connected ? "Online" : "Offline");
+}
+
+// Lapis 1: event browser langsung (paling cepat)
+window.addEventListener("online",  () => setWifiStatus(true));
+window.addEventListener("offline", () => setWifiStatus(false));
+
+// Lapis 2: interval cek setiap 3 detik pakai navigator.onLine
+setInterval(() => {
+  setWifiStatus(navigator.onLine);
+}, 3000);
+
+// Lapis 3: .info/connected Firebase sebagai konfirmasi tambahan
+onValue(ref(db, ".info/connected"), snap => {
+  const connected = snap.val() === true;
+  setWifiStatus(connected);
 });
 
 // ================================================================
@@ -151,12 +183,12 @@ setInterval(() => {
   if (lastSensorTimestamp === null) return;
   const selisih = Date.now() - lastSensorTimestamp;
 
-  // Baru offline
+  // Baru offline karena sinyal LoRa hilang
   if (selisih > SENSOR_TIMEOUT_MS && state.loraOnline) {
     state.loraOnline             = false;
     state.loraOfflineSince       = Date.now();
     state.loraOfflineEmailSent   = false;
-    updateLoraStatus(false);
+    updateLoraStatus(false, "lora");   // sebab: lora
     updateLedRow();
     console.log("[LoRa] Timeout → offline");
   }
@@ -529,13 +561,15 @@ function updateApiUI(api, suhu) {
 
 // ================================================================
 //  UPDATE STATUS LORA
+//  online=true  → TERHUBUNG
+//  online=false, sebab="wifi" → OFFLINE (WiFi terputus)
+//  online=false, sebab="lora" → OFFLINE (sinyal LoRa hilang)
 // ================================================================
-function updateLoraStatus(online) {
+function updateLoraStatus(online, sebab) {
   const txt    = $("loraStatusText");
   const since  = $("loraSince");
   const rings  = $("loraRings");
   const center = rings ? rings.querySelector(".lring-center") : null;
-  const offMsg = $("loraOfflineMsg");
 
   $("lstatPackets").textContent = state.packets;
 
@@ -545,13 +579,17 @@ function updateLoraStatus(online) {
     since.textContent = "Data LoRa diterima";
     rings.classList.remove("offline");
     if (center) center.classList.remove("offline");
-    if (offMsg) offMsg.style.display = "none";
   } else {
     txt.textContent = "OFFLINE";
     txt.className   = "lora-status-text offline";
     rings.classList.add("offline");
     if (center) center.classList.add("offline");
-    if (offMsg) offMsg.style.display = "flex";
+    // Pesan berbeda tergantung penyebab
+    if (sebab === "wifi") {
+      since.textContent = "WiFi terputus";
+    } else {
+      since.textContent = "Sinyal LoRa tidak ada";
+    }
   }
 }
 
@@ -840,7 +878,10 @@ window.sendTestEmail = () => {
 // ================================================================
 //  INIT — urutan sangat penting
 // ================================================================
-updateLoraStatus(false);
+updateLoraStatus(false, "lora");
+
+// Set status WiFi awal langsung dari browser — tidak tunggu Firebase
+state.wifiOnline = navigator.onLine;
 updateLedRow();
 
 // 1. Baca data terakhir (survive refresh) → tampil langsung
