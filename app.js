@@ -134,66 +134,59 @@ setInterval(() => {
 $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
 
 // ================================================================
-//  DETEKSI KONEKSI — 3 LAPIS supaya responsif
+//  DETEKSI STATUS WIFI ESP32
 //
-//  Lapis 1: navigator.onLine → deteksi cepat saat kabel/WiFi putus
-//  Lapis 2: interval cek setiap 3 detik → backup jika event tidak fire
-//  Lapis 3: .info/connected Firebase → konfirmasi dari sisi Firebase
+//  PRINSIP: indikator WiFi di web mencerminkan apakah ESP32
+//  terhubung WiFi atau tidak — BUKAN status internet browser.
+//
+//  Caranya: pantau timestamp data terakhir dari Firebase.
+//  Jika tidak ada data masuk > WIFI_TIMEOUT_MS → ESP32 WiFi offline
+//  Jika tidak ada data masuk > LORA_TIMEOUT_MS → LoRa offline
+//
+//  Kenapa navigator.onLine tidak dipakai:
+//  navigator.onLine = status internet laptop/HP yang buka web,
+//  bukan status WiFi ESP32. Tidak relevan untuk kasus ini.
 // ================================================================
 
-// Fungsi utama set status WiFi — dipanggil dari semua lapis
-function setWifiStatus(connected) {
-  if (state.wifiOnline === connected) return; // tidak berubah, skip
-  state.wifiOnline = connected;
+const WIFI_TIMEOUT_MS = 30000;  // 30 detik tidak ada data → WiFi ESP32 offline
 
-  if (!connected) {
-    state.loraOnline           = false;
-    state.loraOfflineSince     = state.loraOfflineSince || Date.now();
-    state.loraOfflineEmailSent = state.loraOfflineEmailSent || false;
-    updateLoraStatus(false, "wifi");
-  } else {
-    if (!state.loraOnline) {
-      const since = $("loraSince");
-      if (since) since.textContent = "Menunggu data LoRa...";
-    }
-  }
+function setWifiStatus(connected) {
+  if (state.wifiOnline === connected) return;
+  state.wifiOnline = connected;
   updateLedRow();
-  console.log("[WiFi]", connected ? "Online" : "Offline");
+  console.log("[WiFi ESP32]", connected ? "Online" : "Offline");
 }
 
-// Lapis 1: event browser langsung (paling cepat)
-window.addEventListener("online",  () => setWifiStatus(true));
-window.addEventListener("offline", () => setWifiStatus(false));
-
-// Lapis 2: interval cek setiap 3 detik pakai navigator.onLine
-setInterval(() => {
-  setWifiStatus(navigator.onLine);
-}, 3000);
-
-// Lapis 3: .info/connected Firebase sebagai konfirmasi tambahan
-onValue(ref(db, ".info/connected"), snap => {
-  const connected = snap.val() === true;
-  setWifiStatus(connected);
-});
-
 // ================================================================
-//  CEK TIMEOUT LORA setiap 5 detik
+//  SATU INTERVAL untuk cek LoRa + WiFi ESP32
+//  Dijalankan setiap 5 detik
 // ================================================================
 setInterval(() => {
   if (lastSensorTimestamp === null) return;
+
   const selisih = Date.now() - lastSensorTimestamp;
 
-  // Baru offline karena sinyal LoRa hilang
+  // ── CEK LORA (timeout 15 detik) ──────────────────────────────
   if (selisih > SENSOR_TIMEOUT_MS && state.loraOnline) {
-    state.loraOnline             = false;
-    state.loraOfflineSince       = Date.now();
-    state.loraOfflineEmailSent   = false;
-    updateLoraStatus(false, "lora");   // sebab: lora
+    state.loraOnline           = false;
+    state.loraOfflineSince     = Date.now();
+    state.loraOfflineEmailSent = false;
+    updateLoraStatus(false, "lora");
     updateLedRow();
     console.log("[LoRa] Timeout → offline");
   }
 
-  // Update durasi offline
+  // ── CEK WIFI ESP32 (timeout 30 detik) ────────────────────────
+  // Jika data tidak masuk > 30 detik, WiFi ESP32 dianggap offline
+  if (selisih > WIFI_TIMEOUT_MS && state.wifiOnline) {
+    setWifiStatus(false);
+  }
+  // Jika data masuk dalam 30 detik, WiFi dianggap online
+  if (selisih <= WIFI_TIMEOUT_MS && !state.wifiOnline) {
+    setWifiStatus(true);
+  }
+
+  // ── UPDATE DURASI OFFLINE ─────────────────────────────────────
   if (!state.loraOnline && state.loraOfflineSince) {
     const dur    = Date.now() - state.loraOfflineSince;
     const menit  = Math.floor(dur / 60000);
@@ -201,10 +194,8 @@ setInterval(() => {
     const durStr = menit > 0 ? menit + "m " + detik + "d" : detik + "d";
 
     $("loraSince").textContent = "Offline selama " + durStr;
-    const offTxt = $("loraOfflineText");
-    if (offTxt) offTxt.textContent = "Sinyal terputus " + durStr;
 
-    // Kirim email setelah offline > 5 menit
+    // Email setelah offline > 5 menit
     if (dur >= LORA_OFFLINE_EMAIL_MS && !state.loraOfflineEmailSent) {
       state.loraOfflineEmailSent = true;
       sendEmailAlert(
@@ -352,10 +343,13 @@ function listenLatest() {
 
     // LoRa baru online
     if (!state.loraOnline) {
-      state.loraOnline             = true;
-      state.loraOfflineSince       = null;
-      state.loraOfflineEmailSent   = false;
+      state.loraOnline           = true;
+      state.loraOfflineSince     = null;
+      state.loraOfflineEmailSent = false;
     }
+
+    // WiFi ESP32 online karena data baru masuk
+    setWifiStatus(true);
 
     updateSuhuUI(state.suhu);
     updateApiUI(state.api, state.suhu);
@@ -880,8 +874,8 @@ window.sendTestEmail = () => {
 // ================================================================
 updateLoraStatus(false, "lora");
 
-// Set status WiFi awal langsung dari browser — tidak tunggu Firebase
-state.wifiOnline = navigator.onLine;
+// Mulai dari offline dulu — akan update otomatis saat data masuk
+state.wifiOnline = false;
 updateLedRow();
 
 // 1. Baca data terakhir (survive refresh) → tampil langsung
