@@ -96,34 +96,8 @@ body::after {
 .header-left  { display: flex; align-items: center; gap: 16px; }
 .header-right { display: flex; align-items: center; gap: 24px; }
 
-.signal-ring {
-  position: relative; width: 36px; height: 36px; border-radius: 50%;
-  border: 1px solid var(--cyan-dim);
-  display: flex; align-items: center; justify-content: center;
-}
-.signal-ring::before {
-  content: ''; position: absolute; inset: -6px; border-radius: 50%;
-  border: 1px solid rgba(0,255,224,.1);
-  animation: ringPulse 2.4s ease-out infinite;
-}
-@keyframes ringPulse {
-  0%   { transform: scale(1); opacity: 0.5; }
-  100% { transform: scale(1.7); opacity: 0; }
-}
-
-.signal-dot {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--text-dim);
-  transition: background var(--transition), box-shadow var(--transition);
-}
-.signal-dot.active {
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan), 0 0 20px rgba(0,255,224,.4);
-}
-.signal-dot.danger {
-  background: var(--red); box-shadow: 0 0 8px var(--red);
-  animation: blink .4s step-end infinite;
-}
+/* signal-ring, signal-dot, conn-badge dihapus dari header */
+/* blink masih dibutuhkan card-badge danger */
 @keyframes blink { 50% { opacity: 0; } }
 
 .header-title { display: flex; flex-direction: column; }
@@ -145,36 +119,7 @@ body::after {
   font-family: var(--font-mono); font-size: .78rem; color: var(--text-muted);
 }
 
-/* ── CONN BADGE (HEADER) = WIFI SAJA ── */
-.conn-badge {
-  display: flex; align-items: center; gap: 9px;
-  background: var(--surface); border: 1px solid var(--card-border);
-  border-radius: 100px; padding: 6px 16px;
-  transition: all var(--transition);
-}
-.conn-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: currentColor; flex-shrink: 0;
-  animation: blink 1s step-end infinite;
-}
-.conn-info { display: flex; flex-direction: column; line-height: 1.2; }
-.conn-label {
-  font-family: var(--font-mono); font-size: .55rem;
-  color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase;
-}
-#connText {
-  font-family: var(--font-mono); font-size: .72rem;
-  color: var(--text-muted);
-}
-.conn-badge.online {
-  border-color: rgba(0,255,136,.3); color: var(--green);
-}
-.conn-badge.online #connText { color: var(--green); }
-.conn-badge.online .conn-dot { animation: none; box-shadow: 0 0 6px currentColor; }
-.conn-badge.offline {
-  border-color: rgba(255,43,43,.3); color: var(--red);
-}
-.conn-badge.offline #connText { color: var(--red); }
+/* conn-badge dihapus dari header */
 
 /* ── TICKER BAR DIHAPUS — tidak ada lagi .ticker-bar ── */
 
@@ -414,14 +359,7 @@ body::after {
 .lled.off > span { background: var(--red); }
 .lled.off .lled-name { color: var(--red); }
 
-/* ── LORA OFFLINE MESSAGE ── */
-.lora-offline-msg {
-  display: flex; align-items: center; gap: 8px;
-  background: rgba(255,43,43,.06); border: 1px solid rgba(255,43,43,.2);
-  border-radius: var(--radius); padding: 8px 12px;
-  font-family: var(--font-mono); font-size: .68rem; color: var(--red);
-  margin-top: 4px;
-}
+/* lora-offline-msg dihapus */
 
 /* ── CHART ── */
 .chart-card {
