@@ -17,9 +17,6 @@
   ============================================================ -->
   <header class="header">
     <div class="header-left">
-      <div class="signal-ring">
-        <div class="signal-dot" id="signalDot"></div>
-      </div>
       <div class="header-title">
         <span class="title-main">DETEKSI</span>
         <span class="title-sub">Sistem Monitoring Suhu &amp; Api</span>
@@ -33,15 +30,6 @@
       <div class="header-meta">
         <span class="meta-label">UPDATE</span>
         <span class="meta-val" id="headerTime">—</span>
-      </div>
-
-      <!-- WIFI STATUS BADGE — hanya menunjukkan koneksi WiFi/Firebase -->
-      <div class="conn-badge" id="connBadge">
-        <span class="conn-dot"></span>
-        <div class="conn-info">
-          <span class="conn-label">WiFi</span>
-          <span id="connText">CONNECTING...</span>
-        </div>
       </div>
     </div>
   </header>
@@ -211,17 +199,6 @@
               <div class="lled-sub" id="lledAlertText">0 penerima</div>
             </div>
           </div>
-        </div>
-
-        <!-- Status pesan offline -->
-        <div class="lora-offline-msg" id="loraOfflineMsg" style="display:none;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <span id="loraOfflineText">Sinyal LoRa terputus</span>
         </div>
 
       </div>
