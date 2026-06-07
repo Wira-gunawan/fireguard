@@ -10,6 +10,11 @@
 </head>
 <body>
 
+  <!-- ============================================================
+    HEADER
+    conn-badge di sini = indikator WIFI SAJA
+    LoRa ditampilkan di card STATUS KONEKSI
+  ============================================================ -->
   <header class="header">
     <div class="header-left">
       <div class="header-title">
@@ -29,8 +34,12 @@
     </div>
   </header>
 
+  <!-- TICKER BAR DIHAPUS -->
+
+  <!-- MAIN CONTENT -->
   <main class="main">
 
+    <!-- ROW 1: CARDS REALTIME -->
     <section class="row-cards">
 
       <!-- SUHU CARD -->
@@ -62,6 +71,7 @@
             <div class="gauge-unit">°C</div>
           </div>
         </div>
+
         <div class="card-footer">
           <div class="footer-stat">
             <span class="fs-label">MAX 24H</span>
@@ -100,9 +110,15 @@
           <div class="api-label" id="apiStatusLabel">AMAN</div>
           <div class="api-sublabel" id="apiSubLabel">Tidak ada deteksi api</div>
         </div>
-
-        <!-- Hanya Terakhir terdeteksi — Deteksi hari ini & 7 hari dihapus -->
         <div class="api-stats">
+          <div class="api-stat-row">
+            <span class="asr-label">Deteksi hari ini</span>
+            <span class="asr-val" id="apiToday">0x</span>
+          </div>
+          <div class="api-stat-row">
+            <span class="asr-label">Deteksi 7 hari</span>
+            <span class="asr-val" id="api7d">0x</span>
+          </div>
           <div class="api-stat-row">
             <span class="asr-label">Terakhir terdeteksi</span>
             <span class="asr-val" id="apiLast">—</span>
@@ -110,49 +126,86 @@
         </div>
       </div>
 
-<!-- STATUS KONEKSI CARD -->
-<div class="card card-lora" id="cardLora">
-  <div class="card-header">
-    <span class="card-label">STATUS KONEKSI</span>
-  </div>
+      <!-- ============================================================
+        STATUS KONEKSI CARD
+        Card ini HANYA menampilkan status LoRa
+        WiFi/Firebase ditampilkan terpisah di header & LED row
+      ============================================================ -->
+      <div class="card card-lora" id="cardLora">
+        <div class="card-header">
+          <span class="card-label">STATUS KONEKSI</span>
+        </div>
 
-  <div class="lora-display">
-    <div class="lora-rings" id="loraRings">
-      <div class="lring r1"></div>
-      <div class="lring r2"></div>
-      <div class="lring r3"></div>
+        <!-- LORA STATUS — hanya LoRa -->
+        <div class="lora-display">
+          <div class="lora-rings" id="loraRings">
+            <div class="lring r1"></div>
+            <div class="lring r2"></div>
+            <div class="lring r3"></div>
+            <div class="lring-center">
+              <!-- LoRa / sinyal icon -->
+              <svg viewBox="0 0 32 32" width="22" height="22">
+                <rect x="2"  y="10" width="6" height="14" rx="1" fill="currentColor"/>
+                <rect x="10" y="6"  width="6" height="18" rx="1" fill="currentColor"/>
+                <rect x="18" y="2"  width="6" height="22" rx="1" fill="currentColor"/>
+                <circle cx="28" cy="4" r="3" fill="#00ffe0"/>
+              </svg>
+            </div>
+          </div>
+          <div class="lora-info">
+            <!-- Label jelas: LoRa E220 -->
+            <div class="lora-proto-label">LoRa E220</div>
+            <div class="lora-status-text" id="loraStatusText">MENUNGGU</div>
+            <div class="lora-since" id="loraSince">Menunggu paket pertama...</div>
+          </div>
+        </div>
 
-      <div class="lring-center">
-        <svg viewBox="0 0 32 32" width="22" height="22">
-          <rect x="2"  y="10" width="6" height="14" rx="1" fill="currentColor"/>
-          <rect x="10" y="6"  width="6" height="18" rx="1" fill="currentColor"/>
-          <rect x="18" y="2"  width="6" height="22" rx="1" fill="currentColor"/>
-          <circle cx="28" cy="4" r="3" fill="#00ffe0"/>
-        </svg>
+        <!-- STATS paket & uptime -->
+        <div class="lora-stats">
+          <div class="lora-stat">
+            <div class="lstat-val" id="lstatPackets">0</div>
+            <div class="lstat-label">PAKET DITERIMA</div>
+          </div>
+          <div class="lstat-divider"></div>
+          <div class="lora-stat">
+            <div class="lstat-val" id="lstatUptime">0s</div>
+            <div class="lstat-label">UPTIME WEB</div>
+          </div>
+        </div>
+
+        <!-- LED ROW — 3 indikator terpisah jelas -->
+        <div class="lora-led-row">
+          <!-- LED 1: LoRa hardware -->
+          <div class="lled" id="lledLora">
+            <span></span>
+            <div class="lled-info">
+              <div class="lled-name">LoRa</div>
+              <div class="lled-sub" id="lledLoraText">—</div>
+            </div>
+          </div>
+          <!-- LED 2: WiFi / Firebase cloud -->
+          <div class="lled" id="lledWifi">
+            <span></span>
+            <div class="lled-info">
+              <div class="lled-name">WiFi</div>
+              <div class="lled-sub" id="lledWifiText">—</div>
+            </div>
+          </div>
+          <!-- LED 3: Email notif -->
+          <div class="lled" id="lledAlert">
+            <span></span>
+            <div class="lled-info">
+              <div class="lled-name">Email</div>
+              <div class="lled-sub" id="lledAlertText">0 penerima</div>
+            </div>
+          </div>
+        </div>
+
       </div>
-    </div>
-
-    <div class="lora-info">
-      <div class="lora-proto-label">LoRa E220</div>
-      <div class="lora-status-text" id="loraStatusText">MENUNGGU</div>
-      <div class="lora-since" id="loraSince">
-        Menunggu paket pertama...
-      </div>
-    </div>
-  </div>
-
-  <div class="lora-stats">
-    <div class="lora-stat">
-      <div class="lstat-val" id="lstatPackets">0</div>
-      <div class="lstat-label">PAKET DITERIMA</div>
-    </div>
-  </div>
-
-</div>
 
     </section>
 
-    <!-- CHART -->
+    <!-- ROW 2: CHART -->
     <section class="chart-section">
       <div class="chart-card">
         <div class="chart-header">
@@ -182,7 +235,7 @@
       </div>
     </section>
 
-    <!-- EMAIL MANAGER -->
+    <!-- ROW 3: EMAIL MANAGER -->
     <section class="email-section">
       <div class="email-card">
         <div class="email-header">
@@ -264,6 +317,7 @@
 
   </main>
 
+  <!-- FOOTER -->
   <footer class="footer">
     <span>FIREGUARD MONITORING SYSTEM</span>
     <span class="footer-sep">|</span>
@@ -272,6 +326,7 @@
     <span id="footerUptime">Uptime: 0s</span>
   </footer>
 
+  <!-- ALERT OVERLAY -->
   <div class="alert-overlay" id="alertOverlay">
     <div class="alert-box">
       <div class="alert-icon" id="alertIcon">🔥</div>
@@ -281,6 +336,7 @@
     </div>
   </div>
 
+  <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
