@@ -110,70 +110,45 @@
         </div>
       </div>
 
-      <!-- STATUS KONEKSI CARD -->
-      <div class="card card-lora" id="cardLora">
-        <div class="card-header">
-          <span class="card-label">STATUS KONEKSI</span>
-        </div>
+<!-- STATUS KONEKSI CARD -->
+<div class="card card-lora" id="cardLora">
+  <div class="card-header">
+    <span class="card-label">STATUS KONEKSI</span>
+  </div>
 
-        <div class="lora-display">
-          <div class="lora-rings" id="loraRings">
-            <div class="lring r1"></div>
-            <div class="lring r2"></div>
-            <div class="lring r3"></div>
-            <div class="lring-center">
-              <svg viewBox="0 0 32 32" width="22" height="22">
-                <rect x="2"  y="10" width="6" height="14" rx="1" fill="currentColor"/>
-                <rect x="10" y="6"  width="6" height="18" rx="1" fill="currentColor"/>
-                <rect x="18" y="2"  width="6" height="22" rx="1" fill="currentColor"/>
-                <circle cx="28" cy="4" r="3" fill="#00ffe0"/>
-              </svg>
-            </div>
-          </div>
-          <div class="lora-info">
-            <div class="lora-proto-label">LoRa E220</div>
-            <div class="lora-status-text" id="loraStatusText">MENUNGGU</div>
-            <div class="lora-since" id="loraSince">Menunggu paket pertama...</div>
-          </div>
-        </div>
+  <div class="lora-display">
+    <div class="lora-rings" id="loraRings">
+      <div class="lring r1"></div>
+      <div class="lring r2"></div>
+      <div class="lring r3"></div>
 
-        <div class="lora-stats">
-          <div class="lora-stat">
-            <div class="lstat-val" id="lstatPackets">0</div>
-            <div class="lstat-label">PAKET DITERIMA</div>
-          </div>
-          <div class="lstat-divider"></div>
-          <div class="lora-stat">
-            <div class="lstat-val" id="lstatUptime">0s</div>
-            <div class="lstat-label">UPTIME WEB</div>
-          </div>
-        </div>
-
-        <div class="lora-led-row">
-          <div class="lled" id="lledLora">
-            <span></span>
-            <div class="lled-info">
-              <div class="lled-name">LoRa</div>
-              <div class="lled-sub" id="lledLoraText">—</div>
-            </div>
-          </div>
-          <div class="lled" id="lledWifi">
-            <span></span>
-            <div class="lled-info">
-              <div class="lled-name">WiFi</div>
-              <div class="lled-sub" id="lledWifiText">—</div>
-            </div>
-          </div>
-          <div class="lled" id="lledAlert">
-            <span></span>
-            <div class="lled-info">
-              <div class="lled-name">Email</div>
-              <div class="lled-sub" id="lledAlertText">0 penerima</div>
-            </div>
-          </div>
-        </div>
-
+      <div class="lring-center">
+        <svg viewBox="0 0 32 32" width="22" height="22">
+          <rect x="2"  y="10" width="6" height="14" rx="1" fill="currentColor"/>
+          <rect x="10" y="6"  width="6" height="18" rx="1" fill="currentColor"/>
+          <rect x="18" y="2"  width="6" height="22" rx="1" fill="currentColor"/>
+          <circle cx="28" cy="4" r="3" fill="#00ffe0"/>
+        </svg>
       </div>
+    </div>
+
+    <div class="lora-info">
+      <div class="lora-proto-label">LoRa E220</div>
+      <div class="lora-status-text" id="loraStatusText">MENUNGGU</div>
+      <div class="lora-since" id="loraSince">
+        Menunggu paket pertama...
+      </div>
+    </div>
+  </div>
+
+  <div class="lora-stats">
+    <div class="lora-stat">
+      <div class="lstat-val" id="lstatPackets">0</div>
+      <div class="lstat-label">PAKET DITERIMA</div>
+    </div>
+  </div>
+
+</div>
 
     </section>
 
