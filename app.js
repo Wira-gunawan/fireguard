@@ -1,5 +1,5 @@
 // ================================================================
-//  app.js — FireGuard Monitoring  (FINAL CLEAN)
+//  app.js — FireGuard Monitoring  (FIXED)
 //  Firebase Realtime Database + EmailJS
 //
 //  FITUR:
@@ -9,6 +9,11 @@
 //  - Email: api terdeteksi, suhu >60C, LoRa offline >5 menit
 //  - Terakhir terdeteksi disimpan ke /stats Firebase
 //  - Auto-cleanup history >7 hari
+//
+//  FIX:
+//  - updateSuhuStatsRealtime: isNaN check diperbaiki agar min/max
+//    langsung diset saat nilai pertama masuk (dari "--")
+//  - computeStats: fallback ke suhu realtime/cache jika rows24h kosong
 // ================================================================
 
 import { initializeApp }
@@ -134,7 +139,6 @@ $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
 
 // ================================================================
 //  DETEKSI STATUS WIFI & LORA — dari timestamp data ESP32
-//  Bukan dari navigator.onLine (itu status browser, bukan ESP32)
 // ================================================================
 function setWifiStatus(connected) {
   if (state.wifiOnline === connected) return;
@@ -146,7 +150,6 @@ setInterval(() => {
   if (lastSensorTimestamp === null) return;
   const selisih = Date.now() - lastSensorTimestamp;
 
-  // LoRa offline jika >15 detik tidak ada data
   if (selisih > SENSOR_TIMEOUT_MS && state.loraOnline) {
     state.loraOnline           = false;
     state.loraOfflineSince     = Date.now();
@@ -155,11 +158,9 @@ setInterval(() => {
     updateLedRow();
   }
 
-  // WiFi ESP32 offline jika >30 detik tidak ada data
-  if (selisih > WIFI_TIMEOUT_MS && state.wifiOnline)  setWifiStatus(false);
-  if (selisih <= WIFI_TIMEOUT_MS && !state.wifiOnline) setWifiStatus(true);
+  if (selisih > WIFI_TIMEOUT_MS && state.wifiOnline)   setWifiStatus(false);
+  if (selisih <= WIFI_TIMEOUT_MS && !state.wifiOnline)  setWifiStatus(true);
 
-  // Update durasi offline LoRa
   if (!state.loraOnline && state.loraOfflineSince) {
     const dur    = Date.now() - state.loraOfflineSince;
     const menit  = Math.floor(dur / 60000);
@@ -168,7 +169,6 @@ setInterval(() => {
 
     $("loraSince").textContent = "Offline selama " + durStr;
 
-    // Email setelah offline >5 menit
     if (dur >= LORA_OFFLINE_EMAIL_MS && !state.loraOfflineEmailSent) {
       state.loraOfflineEmailSent = true;
       sendEmailAlert(
@@ -195,6 +195,13 @@ async function loadLastData() {
 
     updateSuhuUI(cachedSuhu);
     updateApiUI(cachedApi, cachedSuhu);
+
+    // Langsung tampilkan min/max/avg dari cachedSuhu saat pertama load
+    if (cachedSuhu > 0) {
+      $("suhuMax24").textContent = cachedSuhu.toFixed(1) + "°";
+      $("suhuMin24").textContent = cachedSuhu.toFixed(1) + "°";
+      $("suhuAvg24").textContent = cachedSuhu.toFixed(1) + "°";
+    }
 
     if (d.timestamp) {
       lastSensorTimestamp = parseInt(d.timestamp);
@@ -244,7 +251,6 @@ function listenStats() {
   });
 }
 
-// Simpan waktu terakhir api ke /stats
 async function saveApiLastTime() {
   try {
     await update(ref(db, "stats"), { apiLastTime: Date.now() });
@@ -280,7 +286,6 @@ function listenLatest() {
     updateLoraStatus(true);
     updateLedRow();
 
-    // Api baru terdeteksi (0→1): simpan waktu & update tampilan
     if (state.api === 1 && state.apiPrev === 0) {
       saveApiLastTime();
       const now = new Date();
@@ -325,10 +330,8 @@ function listenHistory() {
       }
     });
 
-    // Urutkan lama → baru
     rows.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Auto-cleanup data >7 hari
     const cutoff7d = Date.now() - 7 * 86400000;
     rows.filter(r => r.timestamp < cutoff7d).forEach(r => {
       remove(ref(db, "history/" + r.key)).catch(() => {});
@@ -346,30 +349,34 @@ function listenHistory() {
 
 // ================================================================
 //  STATISTIK SUHU dari history + realtime
+//  FIX: fallback ke suhu realtime/cache jika rows24h kosong
 // ================================================================
 function computeStats(rows) {
   if (!rows.length) return;
 
-  const now    = Date.now();
-  const cut24h = now - 86400000;
+  const now     = Date.now();
+  const cut24h  = now - 86400000;
   const rows24h = rows.filter(r => r.timestamp >= cut24h);
 
+  // Nilai suhu aktif: prioritaskan realtime, fallback ke cache
+  const suhuAktif = state.suhu > 0 ? state.suhu : cachedSuhu;
+
   if (rows24h.length) {
-    const vals      = rows24h.map(r => r.suhu);
-    const suhuAktif = state.suhu > 0 ? state.suhu : cachedSuhu;
+    const vals = rows24h.map(r => r.suhu);
     if (suhuAktif > 0) vals.push(suhuAktif);
 
     $("suhuMax24").textContent = Math.max(...vals).toFixed(1) + "°";
     $("suhuMin24").textContent = Math.min(...vals).toFixed(1) + "°";
     $("suhuAvg24").textContent =
       (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) + "°";
-  } else if (cachedSuhu > 0) {
-    $("suhuMax24").textContent = cachedSuhu.toFixed(1) + "°";
-    $("suhuMin24").textContent = cachedSuhu.toFixed(1) + "°";
-    $("suhuAvg24").textContent = cachedSuhu.toFixed(1) + "°";
+
+  } else if (suhuAktif > 0) {
+    // FIX: tidak ada history 24h tapi ada nilai aktif → tetap tampilkan
+    $("suhuMax24").textContent = suhuAktif.toFixed(1) + "°";
+    $("suhuMin24").textContent = suhuAktif.toFixed(1) + "°";
+    $("suhuAvg24").textContent = suhuAktif.toFixed(1) + "°";
   }
 
-  // apiLast dari history hanya jika /stats belum mengisi
   const curLast = $("apiLast").textContent;
   if (curLast === "—" || curLast === "--") {
     const fires = rows.filter(r => r.api === 1);
@@ -380,15 +387,31 @@ function computeStats(rows) {
   }
 }
 
-// Update suhu max/min langsung dari nilai realtime
+// ================================================================
+//  UPDATE MIN/MAX/AVG DARI DATA REALTIME
+//  FIX: gunakan (isNaN || ...) agar nilai pertama langsung masuk
+//  meskipun elemen HTML masih berisi "--"
+// ================================================================
 function updateSuhuStatsRealtime(suhu) {
   if (suhu <= 0) return;
+
   const maxEl  = $("suhuMax24");
   const minEl  = $("suhuMin24");
-  const curMax = parseFloat(maxEl.textContent) || 0;
+  const avgEl  = $("suhuAvg24");
+
+  const curMax = parseFloat(maxEl.textContent);
   const curMin = parseFloat(minEl.textContent);
-  if (suhu > curMax)                 maxEl.textContent = suhu.toFixed(1) + "°";
-  if (!isNaN(curMin) && suhu < curMin) minEl.textContent = suhu.toFixed(1) + "°";
+
+  // FIX: jika NaN (masih "--"), langsung set sebagai nilai pertama
+  if (isNaN(curMax) || suhu > curMax)
+    maxEl.textContent = suhu.toFixed(1) + "°";
+
+  if (isNaN(curMin) || suhu < curMin)
+    minEl.textContent = suhu.toFixed(1) + "°";
+
+  // Update avg dari realtime jika history belum ada
+  if (!state.allHistory.length)
+    avgEl.textContent = suhu.toFixed(1) + "°";
 }
 
 // ================================================================
@@ -470,7 +493,7 @@ function updateLoraStatus(online, sebab) {
 }
 
 // ================================================================
-//  LED ROW — 3 indikator terpisah
+//  LED ROW
 // ================================================================
 function updateLedRow() {
   const lledL  = $("lledLora"),  lledLT = $("lledLoraText");
