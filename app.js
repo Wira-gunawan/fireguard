@@ -1,22 +1,21 @@
 // ================================================================
-//  app.js — FireGuard Monitoring  (FINAL)
+//  app.js — FireGuard Monitoring  (FINAL CLEAN)
+//  Firebase Realtime Database + EmailJS
 //
-//  SEMUA PERBAIKAN:
-//  [1] WiFi offline → LED OFFLINE muncul realtime (.info/connected)
-//  [2] Refresh web → suhu + api + statistik tetap tampil
-//  [3] Min/Max/Avg benar: history + nilai realtime sekarang
-//  [4] Statistik api persist: disimpan ke Firebase /stats
-//      Deteksi hari ini, 7 hari, terakhir terdeteksi tidak hilang
-//  [5] updateApiStatsRealtime tidak double-count:
-//      hanya tambah jika sebelumnya api = 0
-//  [6] LoRa timeout: tampil offline + durasi countdown
+//  FITUR:
+//  - Data survive refresh (suhu, api, terakhir terdeteksi)
+//  - WiFi/LoRa status berdasarkan timestamp data ESP32
+//  - Min/Max/Avg suhu dari history + realtime
+//  - Email: api terdeteksi, suhu >60C, LoRa offline >5 menit
+//  - Terakhir terdeteksi disimpan ke /stats Firebase
+//  - Auto-cleanup history >7 hari
 // ================================================================
 
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getDatabase, ref, onValue, query,
-  orderByChild, limitToLast, push, remove, get, set, update
+  orderByChild, limitToLast, push, remove, get, update
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ================================================================
@@ -43,8 +42,9 @@ const EMAILJS_TEMPLATE_ID = "template_f5yblhn";
 //  KONFIGURASI TIMING
 // ================================================================
 const SENSOR_TIMEOUT_MS     = 15000;     // 15 detik → LoRa OFFLINE
+const WIFI_TIMEOUT_MS       = 30000;     // 30 detik → WiFi ESP32 OFFLINE
 const LORA_OFFLINE_EMAIL_MS = 5 * 60000; // 5 menit  → email LoRa offline
-const ALERT_COOLDOWN_MS     = 5 * 60000; // 5 menit  → jeda antar email
+const ALERT_COOLDOWN_MS     = 5 * 60000; // 5 menit  → jeda antar email bahaya
 
 // ================================================================
 //  INIT FIREBASE & EMAILJS
@@ -57,7 +57,6 @@ function initEmailJS() {
   if (window.emailjs) {
     emailjs.init(EMAILJS_PUBLIC_KEY);
     emailJsReady = true;
-    console.log("[EmailJS] Siap");
   } else {
     setTimeout(initEmailJS, 500);
   }
@@ -65,12 +64,12 @@ function initEmailJS() {
 initEmailJS();
 
 // ================================================================
-//  STATE
+//  STATE GLOBAL
 // ================================================================
 const state = {
   suhu:      0,
   api:       0,
-  apiPrev:   0,        // untuk cek apakah api baru berubah dari 0→1
+  apiPrev:   0,
   loraOnline: false,
   wifiOnline: false,
   packets:    0,
@@ -87,8 +86,8 @@ const state = {
 
 let emailList           = [];
 let lastSensorTimestamp = null;
-let cachedSuhu          = 0;   // nilai suhu terakhir dari Firebase (survive refresh)
-let cachedApi           = 0;   // nilai api terakhir dari Firebase (survive refresh)
+let cachedSuhu          = 0;
+let cachedApi           = 0;
 
 // ================================================================
 //  DOM HELPER
@@ -134,59 +133,33 @@ setInterval(() => {
 $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
 
 // ================================================================
-//  DETEKSI STATUS WIFI ESP32
-//
-//  PRINSIP: indikator WiFi di web mencerminkan apakah ESP32
-//  terhubung WiFi atau tidak — BUKAN status internet browser.
-//
-//  Caranya: pantau timestamp data terakhir dari Firebase.
-//  Jika tidak ada data masuk > WIFI_TIMEOUT_MS → ESP32 WiFi offline
-//  Jika tidak ada data masuk > LORA_TIMEOUT_MS → LoRa offline
-//
-//  Kenapa navigator.onLine tidak dipakai:
-//  navigator.onLine = status internet laptop/HP yang buka web,
-//  bukan status WiFi ESP32. Tidak relevan untuk kasus ini.
+//  DETEKSI STATUS WIFI & LORA — dari timestamp data ESP32
+//  Bukan dari navigator.onLine (itu status browser, bukan ESP32)
 // ================================================================
-
-const WIFI_TIMEOUT_MS = 30000;  // 30 detik tidak ada data → WiFi ESP32 offline
-
 function setWifiStatus(connected) {
   if (state.wifiOnline === connected) return;
   state.wifiOnline = connected;
   updateLedRow();
-  console.log("[WiFi ESP32]", connected ? "Online" : "Offline");
 }
 
-// ================================================================
-//  SATU INTERVAL untuk cek LoRa + WiFi ESP32
-//  Dijalankan setiap 5 detik
-// ================================================================
 setInterval(() => {
   if (lastSensorTimestamp === null) return;
-
   const selisih = Date.now() - lastSensorTimestamp;
 
-  // ── CEK LORA (timeout 15 detik) ──────────────────────────────
+  // LoRa offline jika >15 detik tidak ada data
   if (selisih > SENSOR_TIMEOUT_MS && state.loraOnline) {
     state.loraOnline           = false;
     state.loraOfflineSince     = Date.now();
     state.loraOfflineEmailSent = false;
     updateLoraStatus(false, "lora");
     updateLedRow();
-    console.log("[LoRa] Timeout → offline");
   }
 
-  // ── CEK WIFI ESP32 (timeout 30 detik) ────────────────────────
-  // Jika data tidak masuk > 30 detik, WiFi ESP32 dianggap offline
-  if (selisih > WIFI_TIMEOUT_MS && state.wifiOnline) {
-    setWifiStatus(false);
-  }
-  // Jika data masuk dalam 30 detik, WiFi dianggap online
-  if (selisih <= WIFI_TIMEOUT_MS && !state.wifiOnline) {
-    setWifiStatus(true);
-  }
+  // WiFi ESP32 offline jika >30 detik tidak ada data
+  if (selisih > WIFI_TIMEOUT_MS && state.wifiOnline)  setWifiStatus(false);
+  if (selisih <= WIFI_TIMEOUT_MS && !state.wifiOnline) setWifiStatus(true);
 
-  // ── UPDATE DURASI OFFLINE ─────────────────────────────────────
+  // Update durasi offline LoRa
   if (!state.loraOnline && state.loraOfflineSince) {
     const dur    = Date.now() - state.loraOfflineSince;
     const menit  = Math.floor(dur / 60000);
@@ -195,7 +168,7 @@ setInterval(() => {
 
     $("loraSince").textContent = "Offline selama " + durStr;
 
-    // Email setelah offline > 5 menit
+    // Email setelah offline >5 menit
     if (dur >= LORA_OFFLINE_EMAIL_MS && !state.loraOfflineEmailSent) {
       state.loraOfflineEmailSent = true;
       sendEmailAlert(
@@ -204,43 +177,39 @@ setInterval(() => {
         "\nWaktu: " + new Date().toLocaleString("id-ID") +
         "\n\nSegera periksa perangkat LoRa pengirim."
       );
-      showToast("LoRa offline > 5 menit — email terkirim", "warn");
+      showToast("LoRa offline >5 menit — email terkirim", "warn");
     }
   }
 }, 5000);
 
 // ================================================================
-//  [2] BACA DATA TERAKHIR SAAT HALAMAN DIBUKA (survive refresh)
-//  Pakai get() bukan onValue() — baca sekali, langsung tampil
+//  BACA DATA TERAKHIR SAAT HALAMAN DIBUKA (survive refresh)
 // ================================================================
 async function loadLastData() {
   try {
     const snap = await get(ref(db, "status/latest"));
-    if (snap.exists()) {
-      const d    = snap.val();
-      cachedSuhu = parseFloat(d.suhu || 0);
-      cachedApi  = parseInt(d.api   || 0);
+    if (!snap.exists()) return;
+    const d    = snap.val();
+    cachedSuhu = parseFloat(d.suhu || 0);
+    cachedApi  = parseInt(d.api   || 0);
 
-      updateSuhuUI(cachedSuhu);
-      updateApiUI(cachedApi, cachedSuhu);
+    updateSuhuUI(cachedSuhu);
+    updateApiUI(cachedApi, cachedSuhu);
 
-      if (d.timestamp) {
-        lastSensorTimestamp = parseInt(d.timestamp);
-        $("headerTime").textContent =
-          new Date(lastSensorTimestamp).toLocaleTimeString("id-ID");
+    if (d.timestamp) {
+      lastSensorTimestamp = parseInt(d.timestamp);
+      $("headerTime").textContent =
+        new Date(lastSensorTimestamp).toLocaleTimeString("id-ID");
 
-        // Tentukan status LoRa berdasarkan umur data
-        const umur = Date.now() - lastSensorTimestamp;
-        if (umur > SENSOR_TIMEOUT_MS) {
-          state.loraOnline       = false;
-          state.loraOfflineSince = lastSensorTimestamp;
-          updateLoraStatus(false);
-        } else {
-          state.loraOnline = true;
-          updateLoraStatus(true);
-        }
+      const umur = Date.now() - lastSensorTimestamp;
+      if (umur > SENSOR_TIMEOUT_MS) {
+        state.loraOnline       = false;
+        state.loraOfflineSince = lastSensorTimestamp;
+        updateLoraStatus(false, "lora");
+      } else {
+        state.loraOnline = true;
+        updateLoraStatus(true);
       }
-      console.log("[Init] status/latest →", cachedSuhu, "°C api:", cachedApi);
     }
   } catch (err) {
     console.warn("[Init] Gagal baca status/latest:", err);
@@ -248,39 +217,22 @@ async function loadLastData() {
 }
 
 // ================================================================
-//  [4] BACA STATISTIK API DARI /stats (survive refresh)
-//  Node /stats disimpan ESP32 dan web setiap ada deteksi api
+//  BACA & DENGARKAN /stats — hanya apiLastTime
 // ================================================================
 async function loadApiStats() {
   try {
     const snap = await get(ref(db, "stats"));
     if (!snap.exists()) return;
     const s = snap.val();
-
-    // Tampilkan terakhir terdeteksi
     if (s.apiLastTime && s.apiLastTime > 0) {
       $("apiLast").textContent = new Date(parseInt(s.apiLastTime))
         .toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
     }
-
-    // apiCount24h dan apiCount7d akan dihitung ulang dari history
-    // tapi jika history belum muat, tampilkan dari /stats dulu
-    if (s.apiCount24h !== undefined) {
-      const cur = parseInt($("apiToday").textContent) || 0;
-      if (cur === 0) $("apiToday").textContent = s.apiCount24h + "x";
-    }
-    if (s.apiCount7d !== undefined) {
-      const cur = parseInt($("api7d").textContent) || 0;
-      if (cur === 0) $("api7d").textContent = s.apiCount7d + "x";
-    }
-
-    console.log("[Init] stats dimuat:", s);
   } catch (err) {
     console.warn("[Init] Gagal baca stats:", err);
   }
 }
 
-// Listener realtime untuk /stats — update otomatis jika berubah
 function listenStats() {
   onValue(ref(db, "stats"), snap => {
     if (!snap.exists()) return;
@@ -289,34 +241,13 @@ function listenStats() {
       $("apiLast").textContent = new Date(parseInt(s.apiLastTime))
         .toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
     }
-    if (s.apiCount24h !== undefined)
-      $("apiToday").textContent = s.apiCount24h + "x";
-    if (s.apiCount7d !== undefined)
-      $("api7d").textContent = s.apiCount7d + "x";
   });
 }
 
-// Simpan statistik api ke /stats saat terjadi deteksi
-async function saveApiStatToFirebase() {
+// Simpan waktu terakhir api ke /stats
+async function saveApiLastTime() {
   try {
-    const now    = Date.now();
-    const cut24h = now - 86400000;
-    const cut7d  = now - 7 * 86400000;
-
-    // Hitung dari history yang sudah ada
-    const rows24h = state.allHistory.filter(r => r.timestamp >= cut24h && r.api === 1);
-    const rows7d  = state.allHistory.filter(r => r.timestamp >= cut7d  && r.api === 1);
-
-    // Tambah 1 untuk deteksi sekarang (belum masuk history)
-    const count24h = rows24h.length + 1;
-    const count7d  = rows7d.length  + 1;
-
-    await update(ref(db, "stats"), {
-      apiLastTime:  now,
-      apiCount24h:  count24h,
-      apiCount7d:   count7d,
-    });
-    console.log("[Stats] Disimpan:", count24h, "hari ini,", count7d, "7 hari");
+    await update(ref(db, "stats"), { apiLastTime: Date.now() });
   } catch (err) {
     console.warn("[Stats] Gagal simpan:", err);
   }
@@ -329,26 +260,19 @@ function listenLatest() {
   onValue(ref(db, "status/latest"), snap => {
     if (!snap.exists()) return;
 
-    const d = snap.val();
-    const suhuBaru = parseFloat(d.suhu || 0);
-    const apiBaru  = parseInt(d.api   || 0);
-
-    // Simpan state sebelumnya untuk deteksi perubahan api 0→1
-    state.apiPrev = state.api;
-    state.suhu    = suhuBaru;
-    state.api     = apiBaru;
+    const d        = snap.val();
+    state.apiPrev  = state.api;
+    state.suhu     = parseFloat(d.suhu || 0);
+    state.api      = parseInt(d.api   || 0);
     state.packets++;
 
     lastSensorTimestamp = d.timestamp ? parseInt(d.timestamp) : Date.now();
 
-    // LoRa baru online
     if (!state.loraOnline) {
       state.loraOnline           = true;
       state.loraOfflineSince     = null;
       state.loraOfflineEmailSent = false;
     }
-
-    // WiFi ESP32 online karena data baru masuk
     setWifiStatus(true);
 
     updateSuhuUI(state.suhu);
@@ -356,16 +280,15 @@ function listenLatest() {
     updateLoraStatus(true);
     updateLedRow();
 
-    // [5] Update statistik — hanya jika api BARU berubah dari 0 ke 1
-    // cegah double-count jika data terus mengalir dengan api=1
+    // Api baru terdeteksi (0→1): simpan waktu & update tampilan
     if (state.api === 1 && state.apiPrev === 0) {
-      saveApiStatToFirebase();
-      updateApiDisplayRealtime();
+      saveApiLastTime();
+      const now = new Date();
+      $("apiLast").textContent = now.toLocaleString("id-ID",
+        { dateStyle: "short", timeStyle: "short" });
     }
 
-    // Update suhu max/min realtime
     updateSuhuStatsRealtime(state.suhu);
-
     triggerAlerts(state.suhu, state.api);
 
     if (d.timestamp) {
@@ -405,7 +328,7 @@ function listenHistory() {
     // Urutkan lama → baru
     rows.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Auto-cleanup data > 7 hari
+    // Auto-cleanup data >7 hari
     const cutoff7d = Date.now() - 7 * 86400000;
     rows.filter(r => r.timestamp < cutoff7d).forEach(r => {
       remove(ref(db, "history/" + r.key)).catch(() => {});
@@ -422,19 +345,15 @@ function listenHistory() {
 }
 
 // ================================================================
-//  [3] STATISTIK — history + realtime sekarang
+//  STATISTIK SUHU dari history + realtime
 // ================================================================
 function computeStats(rows) {
   if (!rows.length) return;
 
   const now    = Date.now();
   const cut24h = now - 86400000;
-  const cut7d  = now - 7 * 86400000;
-
   const rows24h = rows.filter(r => r.timestamp >= cut24h);
-  const rows7d  = rows.filter(r => r.timestamp >= cut7d);
 
-  // Suhu: sertakan nilai realtime sekarang
   if (rows24h.length) {
     const vals      = rows24h.map(r => r.suhu);
     const suhuAktif = state.suhu > 0 ? state.suhu : cachedSuhu;
@@ -443,32 +362,20 @@ function computeStats(rows) {
     $("suhuMax24").textContent = Math.max(...vals).toFixed(1) + "°";
     $("suhuMin24").textContent = Math.min(...vals).toFixed(1) + "°";
     $("suhuAvg24").textContent =
-      (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(1) + "°";
+      (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) + "°";
   } else if (cachedSuhu > 0) {
     $("suhuMax24").textContent = cachedSuhu.toFixed(1) + "°";
     $("suhuMin24").textContent = cachedSuhu.toFixed(1) + "°";
     $("suhuAvg24").textContent = cachedSuhu.toFixed(1) + "°";
   }
 
-  // Api dari history — tampilkan, tapi /stats lebih prioritas untuk apiLast
-  const apiCount24h = rows24h.filter(r => r.api === 1).length;
-  const apiCount7d  = rows7d.filter(r => r.api === 1).length;
-
-  // Hanya update jika /stats belum mengisi (tidak overwrite nilai dari /stats)
-  const curToday = $("apiToday").textContent;
-  const cur7d    = $("api7d").textContent;
-  if (curToday === "--" || curToday === "0x")
-    $("apiToday").textContent = apiCount24h + "x";
-  if (cur7d === "--" || cur7d === "0x")
-    $("api7d").textContent = apiCount7d + "x";
-
-  // Terakhir terdeteksi dari history (hanya jika /stats kosong)
+  // apiLast dari history hanya jika /stats belum mengisi
   const curLast = $("apiLast").textContent;
   if (curLast === "—" || curLast === "--") {
-    const fires = rows7d.filter(r => r.api === 1);
+    const fires = rows.filter(r => r.api === 1);
     if (fires.length) {
-      $("apiLast").textContent = new Date(fires[fires.length-1].timestamp)
-        .toLocaleString("id-ID", { dateStyle:"short", timeStyle:"short" });
+      $("apiLast").textContent = new Date(fires[fires.length - 1].timestamp)
+        .toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
     }
   }
 }
@@ -476,29 +383,12 @@ function computeStats(rows) {
 // Update suhu max/min langsung dari nilai realtime
 function updateSuhuStatsRealtime(suhu) {
   if (suhu <= 0) return;
-
   const maxEl  = $("suhuMax24");
   const minEl  = $("suhuMin24");
   const curMax = parseFloat(maxEl.textContent) || 0;
   const curMin = parseFloat(minEl.textContent);
-
-  if (suhu > curMax) maxEl.textContent = suhu.toFixed(1) + "°";
+  if (suhu > curMax)                 maxEl.textContent = suhu.toFixed(1) + "°";
   if (!isNaN(curMin) && suhu < curMin) minEl.textContent = suhu.toFixed(1) + "°";
-}
-
-// Update tampilan api stats langsung (sebelum history tersimpan)
-function updateApiDisplayRealtime() {
-  const todayEl = $("apiToday");
-  const day7El  = $("api7d");
-  const lastEl  = $("apiLast");
-
-  const curToday = parseInt(todayEl.textContent) || 0;
-  const cur7d    = parseInt(day7El.textContent)  || 0;
-
-  todayEl.textContent = (curToday + 1) + "x";
-  day7El.textContent  = (cur7d + 1)    + "x";
-  lastEl.textContent  = new Date().toLocaleString("id-ID",
-    { dateStyle:"short", timeStyle:"short" });
 }
 
 // ================================================================
@@ -510,7 +400,7 @@ function updateSuhuUI(suhu) {
   $("gaugeFill").style.strokeDasharray = (pct * 471) + " 565";
 
   const gF = $("gaugeFill"), gV = $("gaugeVal");
-  const bd = $("suhuBadge"), cd = $("cardSuhu");
+  const bd = $("suhuBadge"),  cd = $("cardSuhu");
 
   if (suhu > 60) {
     gF.style.stroke = "#ff2b2b"; gV.style.color = "#ff2b2b";
@@ -555,9 +445,6 @@ function updateApiUI(api, suhu) {
 
 // ================================================================
 //  UPDATE STATUS LORA
-//  online=true  → TERHUBUNG
-//  online=false, sebab="wifi" → OFFLINE (WiFi terputus)
-//  online=false, sebab="lora" → OFFLINE (sinyal LoRa hilang)
 // ================================================================
 function updateLoraStatus(online, sebab) {
   const txt    = $("loraStatusText");
@@ -578,17 +465,12 @@ function updateLoraStatus(online, sebab) {
     txt.className   = "lora-status-text offline";
     rings.classList.add("offline");
     if (center) center.classList.add("offline");
-    // Pesan berbeda tergantung penyebab
-    if (sebab === "wifi") {
-      since.textContent = "WiFi terputus";
-    } else {
-      since.textContent = "Sinyal LoRa tidak ada";
-    }
+    since.textContent = sebab === "wifi" ? "WiFi terputus" : "Sinyal LoRa tidak ada";
   }
 }
 
 // ================================================================
-//  LED ROW
+//  LED ROW — 3 indikator terpisah
 // ================================================================
 function updateLedRow() {
   const lledL  = $("lledLora"),  lledLT = $("lledLoraText");
@@ -610,7 +492,7 @@ function updateLedRow() {
 }
 
 // ================================================================
-//  TRIGGER ALERTS (email)
+//  TRIGGER ALERTS (email bahaya)
 // ================================================================
 function triggerAlerts(suhu, api) {
   const now = Date.now();
@@ -650,9 +532,7 @@ function renderChart(rangeDays) {
   $("chartEmpty").classList.add("hidden");
   const cutoff   = Date.now() - rangeDays * 86400000;
   const filtered = rows.filter(r => r.timestamp >= cutoff);
-  if (!filtered.length) {
-    $("chartEmpty").classList.remove("hidden"); return;
-  }
+  if (!filtered.length) { $("chartEmpty").classList.remove("hidden"); return; }
 
   const step = Math.max(1, Math.floor(filtered.length / 200));
   const labels = [], data = [], apiDots = [];
@@ -661,9 +541,9 @@ function renderChart(rangeDays) {
     if (i % step !== 0) return;
     const d  = new Date(r.timestamp);
     const lb = rangeDays <= 1
-      ? d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" })
-      : d.toLocaleString("id-ID", { month:"short", day:"numeric",
-          hour:"2-digit", minute:"2-digit" });
+      ? d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleString("id-ID", { month: "short", day: "numeric",
+          hour: "2-digit", minute: "2-digit" });
     labels.push(lb);
     data.push(r.suhu);
     apiDots.push(r.api === 1 ? r.suhu : null);
@@ -705,14 +585,14 @@ function renderChart(rangeDays) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      interaction: { mode:"index", intersect:false },
+      interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: {
           backgroundColor: "rgba(13,21,32,0.95)",
           borderColor: "rgba(0,255,224,0.2)", borderWidth: 1,
-          titleFont: { family:"Share Tech Mono" },
-          bodyFont:  { family:"Share Tech Mono" },
+          titleFont: { family: "Share Tech Mono" },
+          bodyFont:  { family: "Share Tech Mono" },
           callbacks: {
             label: c => {
               if (c.datasetIndex === 0) return " Suhu: " + c.parsed.y.toFixed(1) + "°C";
@@ -724,17 +604,17 @@ function renderChart(rangeDays) {
       },
       scales: {
         x: {
-          ticks: { color:"rgba(74,96,112,0.8)",
-                   font:{family:"Share Tech Mono",size:10},
-                   maxTicksLimit:8, maxRotation:0 },
-          grid:  { color:"rgba(255,255,255,0.03)" }
+          ticks: { color: "rgba(74,96,112,0.8)",
+                   font: { family: "Share Tech Mono", size: 10 },
+                   maxTicksLimit: 8, maxRotation: 0 },
+          grid:  { color: "rgba(255,255,255,0.03)" }
         },
         y: {
           min: 0,
-          ticks: { color:"rgba(74,96,112,0.8)",
-                   font:{family:"Share Tech Mono",size:10},
+          ticks: { color: "rgba(74,96,112,0.8)",
+                   font: { family: "Share Tech Mono", size: 10 },
                    callback: v => v + "°" },
-          grid:  { color:"rgba(255,255,255,0.04)" }
+          grid:  { color: "rgba(255,255,255,0.04)" }
         }
       }
     }
@@ -861,31 +741,25 @@ window.sendTestEmail = () => {
   sendEmailAlert(
     "TEST — FireGuard Monitoring System",
     "Email percobaan dari FireGuard.\n\nSuhu: " + state.suhu.toFixed(1) +
-    " C\nApi: "  + (state.api  === 1 ? "TERDETEKSI" : "AMAN") +
-    "\nLoRa: "   + (state.loraOnline  ? "Online" : "Offline") +
-    "\nWiFi: "   + (state.wifiOnline  ? "Online" : "Offline") +
+    " C\nApi: "  + (state.api   === 1 ? "TERDETEKSI" : "AMAN") +
+    "\nLoRa: "   + (state.loraOnline ? "Online" : "Offline") +
+    "\nWiFi: "   + (state.wifiOnline ? "Online" : "Offline") +
     "\nWaktu: "  + new Date().toLocaleString("id-ID")
   );
   showToast("Test email dikirim ke " + emailList.length + " penerima.", "success");
 };
 
 // ================================================================
-//  INIT — urutan sangat penting
+//  INIT
 // ================================================================
 updateLoraStatus(false, "lora");
-
-// Mulai dari offline dulu — akan update otomatis saat data masuk
 state.wifiOnline = false;
 updateLedRow();
 
-// 1. Baca data terakhir (survive refresh) → tampil langsung
-// 2. Baca statistik api dari /stats (survive refresh)
-// 3. Aktifkan listener realtime
-// 4. Load email dari Firebase
 Promise.all([loadLastData(), loadApiStats()]).then(() => {
-  listenLatest();    // update realtime suhu + api
-  listenHistory();   // update grafik + statistik dari history
-  listenStats();     // update /stats realtime
+  listenLatest();
+  listenHistory();
+  listenStats();
 });
 
 loadEmails();
