@@ -140,7 +140,6 @@ function formatUptime(ms) {
 }
 setInterval(() => {
   const up = formatUptime(Date.now() - state.startTime);
-  $("lstatUptime").textContent  = up;
   $("footerUptime").textContent = "Uptime: " + up;
 }, 1000);
 setInterval(() => {
@@ -464,6 +463,8 @@ function updateLoraStatus(online) {
 //  LED ROW
 // ================================================================
 function updateLedRow() {
+  return;
+}
   const lledL  = $("lledLora"),  lledLT = $("lledLoraText");
   const lledW  = $("lledWifi"),  lledWT = $("lledWifiText");
   const lledA  = $("lledAlert"), lledAT = $("lledAlertText");
