@@ -1,11 +1,6 @@
 /* ================================================================
-   FIREGUARD — style.css  (FIXED VERSION)
+   FIREGUARD — style.css
    Pure CSS — No framework, no template
-   Perubahan:
-   - Ticker bar STATUS dihapus
-   - conn-badge header = WiFi saja
-   - Card koneksi = LoRa saja
-   - LED row diperlebar dengan label lebih jelas
 ================================================================ */
 
 :root {
@@ -73,8 +68,6 @@ body::after {
   pointer-events: none; z-index: 0;
 }
 
-/* ── SCANLINE DIHAPUS ── */
-
 /* ── HEADER ── */
 .header {
   position: sticky; top: 0; z-index: 100;
@@ -96,8 +89,6 @@ body::after {
 .header-left  { display: flex; align-items: center; gap: 16px; }
 .header-right { display: flex; align-items: center; gap: 24px; }
 
-/* signal-ring, signal-dot, conn-badge dihapus dari header */
-/* blink masih dibutuhkan card-badge danger */
 @keyframes blink { 50% { opacity: 0; } }
 
 .header-title { display: flex; flex-direction: column; }
@@ -118,10 +109,6 @@ body::after {
 .meta-val {
   font-family: var(--font-mono); font-size: .78rem; color: var(--text-muted);
 }
-
-/* conn-badge dihapus dari header */
-
-/* ── TICKER BAR DIHAPUS — tidak ada lagi .ticker-bar ── */
 
 /* ── MAIN LAYOUT ── */
 .main {
@@ -209,8 +196,6 @@ body::after {
   font-family: var(--font-mono); font-size: .8rem; color: var(--text-muted); margin-top: 2px;
 }
 
-/* suhu-bar dihapus */
-
 .card-footer {
   display: flex; border-top: 1px solid var(--card-border);
   margin-top: 18px; padding-top: 14px;
@@ -279,7 +264,6 @@ body::after {
   0%   { opacity: .6; transform: scale(0.7); }
   100% { opacity: 0;  transform: scale(1.4); }
 }
-/* Animasi ring berhenti saat LoRa offline */
 .lora-rings.offline .lring { animation: none; opacity: 0.1; }
 
 .lring-center { position: relative; z-index: 2; color: var(--cyan); display: flex; }
@@ -287,13 +271,11 @@ body::after {
 
 .lora-info { flex: 1; }
 
-/* Label protokol kecil di atas status */
 .lora-proto-label {
   font-family: var(--font-mono); font-size: .6rem;
   color: var(--text-dim); letter-spacing: 2px;
   text-transform: uppercase; margin-bottom: 3px;
 }
-
 .lora-status-text {
   font-family: var(--font-display); font-size: 1.4rem;
   letter-spacing: 3px; color: var(--text-muted);
@@ -307,8 +289,9 @@ body::after {
   color: var(--text-dim); margin-top: 3px;
 }
 
+/* ── LORA STATS: Paket Diterima + Email (menggantikan Uptime) ── */
 .lora-stats {
-  display: flex; align-items: center;
+  display: flex; align-items: stretch;
   background: var(--surface); border-radius: var(--radius);
   border: 1px solid var(--card-border); overflow: hidden; margin-bottom: 14px;
 }
@@ -323,16 +306,12 @@ body::after {
   color: var(--text-dim); letter-spacing: 1px; margin-top: 2px;
 }
 
-/* ── LED ROW — diperlebar dengan sub-label ── */
-.lora-led-row { display: flex; gap: 8px; margin-bottom: 10px; }
-
+/* ── LED EMAIL — tanpa border/background (menyatu di lora-stat) ── */
 .lled {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
   font-family: var(--font-mono); font-size: .65rem;
-  color: var(--text-dim); flex: 1;
-  background: var(--surface); border: 1px solid var(--card-border);
-  border-radius: var(--radius); padding: 9px 12px;
-  transition: border-color var(--transition);
+  color: var(--text-dim); width: 100%;
+  background: transparent; border: none; padding: 0;
 }
 .lled > span {
   width: 9px; height: 9px; border-radius: 50%;
@@ -340,26 +319,12 @@ body::after {
   transition: background var(--transition), box-shadow var(--transition);
   flex-shrink: 0;
 }
-.lled-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lled-info { display: flex; flex-direction: column; gap: 1px; }
 .lled-name { color: var(--text-muted); font-size: .68rem; }
 .lled-sub  { color: var(--text-dim); font-size: .58rem; letter-spacing: .5px; }
 
-/* State: ON */
-.lled.on { border-color: rgba(0,255,136,.2); }
 .lled.on > span { background: var(--green); box-shadow: 0 0 6px var(--green); }
 .lled.on .lled-name { color: var(--green); }
-
-/* State: WARN (misal sinyal lemah) */
-.lled.warn { border-color: rgba(255,147,0,.2); }
-.lled.warn > span { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
-.lled.warn .lled-name { color: var(--orange); }
-
-/* State: OFF */
-.lled.off { border-color: rgba(255,43,43,.2); }
-.lled.off > span { background: var(--red); }
-.lled.off .lled-name { color: var(--red); }
-
-/* lora-offline-msg dihapus */
 
 /* ── CHART ── */
 .chart-card {
@@ -528,7 +493,6 @@ body::after {
 .test-btn:hover { border-color: rgba(0,255,224,.3); color: var(--cyan); }
 .test-hint { font-family: var(--font-mono); font-size: .63rem; color: var(--text-dim); }
 
-/* Info kondisi notifikasi */
 .notif-info {
   display: flex; flex-direction: column; gap: 6px;
   margin-top: 4px; width: 100%;
@@ -537,9 +501,7 @@ body::after {
   display: flex; align-items: center; gap: 8px;
   font-family: var(--font-mono); font-size: .62rem; color: var(--text-dim);
 }
-.ni-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-}
+.ni-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .ni-dot.fire    { background: var(--red);    box-shadow: 0 0 4px var(--red); }
 .ni-dot.warn    { background: var(--orange); box-shadow: 0 0 4px var(--orange); }
 .ni-dot.offline { background: var(--text-muted); }
