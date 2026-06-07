@@ -465,23 +465,6 @@ function updateLoraStatus(online) {
 function updateLedRow() {
   return;
 }
-  const lledL  = $("lledLora"),  lledLT = $("lledLoraText");
-  const lledW  = $("lledWifi"),  lledWT = $("lledWifiText");
-  const lledA  = $("lledAlert"), lledAT = $("lledAlertText");
-
-  if (lledL && lledLT) {
-    lledL.className    = state.loraOnline ? "lled on"  : "lled off";
-    lledLT.textContent = state.loraOnline ? "Terhubung" : "Offline";
-  }
-  if (lledW && lledWT) {
-    lledW.className    = state.wifiOnline ? "lled on"  : "lled off";
-    lledWT.textContent = state.wifiOnline ? "Online"   : "Offline";
-  }
-  if (lledA && lledAT) {
-    lledA.className    = emailList.length ? "lled on"  : "lled";
-    lledAT.textContent = emailList.length + " penerima";
-  }
-}
 
 // ================================================================
 //  TRIGGER ALERTS (email)
