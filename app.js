@@ -690,33 +690,73 @@ function renderEmailList() {
   });
 }
 
+//Tambahan verifikasi
+const ADMIN_PASSWORD = "12345";
 window.addEmail = async () => {
+
+  const password = prompt("Masukkan password admin");
+
+  // JIKA BATAL
+  if (password === null) {
+    return;
+  }
+
+  // JIKA PASSWORD SALAH
+  if (password !== ADMIN_PASSWORD) {
+    alert("Password salah!");
+    return;
+  }
+
   const inp   = $("emailInput");
   const hint  = $("emailHint");
   const email = inp.value.trim().toLowerCase();
 
-  hint.textContent = ""; hint.className = "eform-hint";
+  hint.textContent = "";
+  hint.className = "eform-hint";
+
+  // VALIDASI KOSONG
   if (!email) {
     hint.textContent = "Masukkan alamat email.";
-    hint.className = "eform-hint error"; return;
+    hint.className = "eform-hint error";
+    return;
   }
+
+  // VALIDASI FORMAT EMAIL
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     hint.textContent = "Format email tidak valid.";
-    hint.className = "eform-hint error"; return;
+    hint.className = "eform-hint error";
+    return;
   }
+
+  // VALIDASI DUPLIKAT
   if (emailList.find(e => e.email === email)) {
     hint.textContent = "Email sudah ada.";
-    hint.className = "eform-hint error"; return;
+    hint.className = "eform-hint error";
+    return;
   }
+
+  // SIMPAN KE FIREBASE
   try {
+
     await push(ref(db, "emails"), { email });
+
     inp.value = "";
+
     hint.textContent = "Tersimpan ke database!";
     hint.className = "eform-hint success";
+
     showToast("Email ditambahkan: " + email, "success");
-    setTimeout(() => { hint.textContent = ""; hint.className = "eform-hint"; }, 3000);
+
+    setTimeout(() => {
+      hint.textContent = "";
+      hint.className = "eform-hint";
+    }, 3000);
+
   } catch (err) {
-    hint.textContent = "Gagal: " + err.message;
+
+    console.error(err);
+
+    hint.textContent = "Gagal menyimpan email.";
     hint.className = "eform-hint error";
   }
 };
@@ -729,6 +769,7 @@ window.removeEmail = async key => {
     showToast("Gagal: " + err.message, "error");
   }
 };
+
 
 $("emailInput").addEventListener("keydown", e => {
   if (e.key === "Enter") window.addEmail();
