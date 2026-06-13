@@ -773,9 +773,11 @@ updateLoraStatus(false);
 updateLedRow();
 
 loadEmails();
-listenStats();   // aktifkan PERTAMA — isi apiLast dari Firebase langsung
+listenStats();    // aktifkan PERTAMA — isi apiLast dari Firebase langsung
+listenHistory();  // langsung aktif — tidak perlu tunggu loadLastData selesai
 
-Promise.all([loadLastData(), loadApiLast()]).then(() => {
+loadLastData().then(() => {
   listenLatest();
-  listenHistory();
 });
+
+loadApiLast();
