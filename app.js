@@ -129,6 +129,17 @@ function showAlert(icon, title, msg) {
 window.dismissAlert = () => $("alertOverlay").classList.remove("show");
 
 // ================================================================
+//  NORMALISASI TIMESTAMP
+//  ESP32 bisa kirim detik (10 digit) atau milidetik (13 digit)
+//  Paksa semua ke milidetik agar filter cutoff konsisten
+// ================================================================
+function toMs(ts) {
+  const t = parseInt(ts);
+  // Jika < 1e11 → satuan detik → kali 1000
+  return t < 1e11 ? t * 1000 : t;
+}
+
+// ================================================================
 //  UPTIME
 // ================================================================
 function formatUptime(ms) {
@@ -217,7 +228,7 @@ function listenLatest() {
     state.api     = apiBaru;
     state.packets++;
 
-    lastSensorTimestamp = d.timestamp ? parseInt(d.timestamp) : Date.now();
+    lastSensorTimestamp = d.timestamp ? toMs(d.timestamp) : Date.now();
 
     if (!state.loraOnline) {
       state.loraOnline           = true;
@@ -240,7 +251,7 @@ function listenLatest() {
 
     if (d.timestamp) {
       $("headerTime").textContent =
-        new Date(parseInt(d.timestamp)).toLocaleTimeString("id-ID");
+        new Date(toMs(d.timestamp)).toLocaleTimeString("id-ID");
     }
   }, err => {
     console.warn("[Firebase] listenLatest error:", err);
@@ -312,7 +323,7 @@ function listenHistory() {
           key:       child.key,
           suhu:      parseFloat(v.suhu),
           api:       parseInt(v.api || 0),
-          timestamp: parseInt(v.timestamp)
+          timestamp: toMs(v.timestamp)   // normalisasi detik → ms
         });
       }
     });
@@ -334,6 +345,43 @@ function listenHistory() {
       renderChart(state.chartRange);
     }
   });
+}
+
+// ================================================================
+//  STATISTIK SUHU dari history + realtime
+//  Fallback apiLast dari history jika /stats belum terisi
+// ================================================================
+function computeSuhuStats(rows) {
+  if (!rows.length) return;
+
+  const now     = Date.now();
+  const cut24h  = now - 86400000;
+  const rows24h = rows.filter(r => r.timestamp >= cut24h);
+
+  const suhuAktif = state.suhu > 0 ? state.suhu : cachedSuhu;
+
+  if (rows24h.length) {
+    const vals = rows24h.map(r => r.suhu);
+    if (suhuAktif > 0) vals.push(suhuAktif);
+    $("suhuMax24").textContent = Math.max(...vals).toFixed(1) + "°";
+    $("suhuMin24").textContent = Math.min(...vals).toFixed(1) + "°";
+    $("suhuAvg24").textContent =
+      (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) + "°";
+  } else if (suhuAktif > 0) {
+    $("suhuMax24").textContent = suhuAktif.toFixed(1) + "°";
+    $("suhuMin24").textContent = suhuAktif.toFixed(1) + "°";
+    $("suhuAvg24").textContent = suhuAktif.toFixed(1) + "°";
+  }
+
+  // Fallback apiLast dari history jika /stats belum ada
+  const curLast = $("apiLast").textContent;
+  if (curLast === "—" || curLast === "--") {
+    const fires = rows.filter(r => r.api === 1);
+    if (fires.length) {
+      $("apiLast").textContent = new Date(fires[fires.length - 1].timestamp)
+        .toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
+    }
+  }
 }
 
 // ================================================================
@@ -360,7 +408,7 @@ async function loadLastData() {
     state.apiPrev = api; // Jika sudah api=1 saat refresh, jangan tulis stats lagi
 
     if (d.timestamp) {
-      lastSensorTimestamp = parseInt(d.timestamp);
+      lastSensorTimestamp = toMs(d.timestamp);
       $("headerTime").textContent =
         new Date(lastSensorTimestamp).toLocaleTimeString("id-ID");
 
@@ -772,12 +820,12 @@ window.sendTestEmail = () => {
 updateLoraStatus(false);
 updateLedRow();
 
+// Jalankan semuanya paralel — persis pola kode asli
+// listenHistory() tidak menunggu apapun → grafik langsung load
+listenHistory();
+listenStats();
 loadEmails();
-listenStats();    // aktifkan PERTAMA — isi apiLast dari Firebase langsung
-listenHistory();  // langsung aktif — tidak perlu tunggu loadLastData selesai
 
-loadLastData().then(() => {
+Promise.all([loadLastData(), loadApiLast()]).then(() => {
   listenLatest();
 });
-
-loadApiLast();
