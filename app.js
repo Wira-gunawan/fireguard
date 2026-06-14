@@ -760,8 +760,16 @@ window.addEmail = async () => {
     hint.className = "eform-hint error";
   }
 };
-
 window.removeEmail = async key => {
+  const password = prompt("Masukkan password admin");
+
+  if (password === null) return;
+
+  if (password !== ADMIN_PASSWORD) {
+    alert("Password salah!");
+    return;
+  }
+
   try {
     await remove(ref(db, "emails/" + key));
     showToast("Email dihapus.");
