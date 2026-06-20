@@ -1,19 +1,21 @@
 // ================================================================
-//  app.js — FireGuard Monitoring  (FIXED)
-//  Firebase Realtime Database + EmailJS
+//  app.js — FireGuard Monitoring  (NO EMAILJS)
+//  Firebase Realtime Database
 //
 //  FITUR:
 //  - Data survive refresh (suhu, api, terakhir terdeteksi)
 //  - WiFi/LoRa status berdasarkan timestamp data ESP32
 //  - Min/Max/Avg suhu dari history + realtime
-//  - Email: api terdeteksi, suhu >60C, LoRa offline >5 menit
 //  - Terakhir terdeteksi disimpan ke /stats Firebase
 //  - Auto-cleanup history >7 hari
+//  - Tambah/hapus email penerima (untuk dibaca Google Apps Script)
 //
-//  FIX:
-//  - updateSuhuStatsRealtime: isNaN check diperbaiki agar min/max
-//    langsung diset saat nilai pertama masuk (dari "--")
-//  - computeStats: fallback ke suhu realtime/cache jika rows24h kosong
+//  CATATAN:
+//  - Email notifikasi (api terdeteksi, suhu >60C, LoRa offline)
+//    SUDAH DIPINDAH ke Google Apps Script yang jalan di server
+//    Google tiap 1 menit, supaya tetap terkirim walau web ditutup.
+//  - app.js ini HANYA untuk dashboard (tampilan) dan kelola daftar
+//    email (/emails), TIDAK lagi mengirim email sendiri.
 // ================================================================
 
 import { initializeApp }
@@ -37,36 +39,16 @@ const firebaseConfig = {
 };
 
 // ================================================================
-//  KONFIGURASI EMAILJS
-// ================================================================
-const EMAILJS_PUBLIC_KEY  = "4v6PI9FmKo9bqOz1Z";
-const EMAILJS_SERVICE_ID  = "service_l9lxqu8";
-const EMAILJS_TEMPLATE_ID = "template_f5yblhn";
-
-// ================================================================
 //  KONFIGURASI TIMING
 // ================================================================
-const SENSOR_TIMEOUT_MS     = 15000;     // 15 detik → LoRa OFFLINE
-const WIFI_TIMEOUT_MS       = 30000;     // 30 detik → WiFi ESP32 OFFLINE
-const LORA_OFFLINE_EMAIL_MS = 5 * 60000; // 5 menit  → email LoRa offline
-const ALERT_COOLDOWN_MS     = 5 * 60000; // 5 menit  → jeda antar email bahaya
+const SENSOR_TIMEOUT_MS = 15000;  // 15 detik → LoRa OFFLINE
+const WIFI_TIMEOUT_MS   = 30000;  // 30 detik → WiFi ESP32 OFFLINE
 
 // ================================================================
-//  INIT FIREBASE & EMAILJS
+//  INIT FIREBASE
 // ================================================================
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
-
-let emailJsReady = false;
-function initEmailJS() {
-  if (window.emailjs) {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-    emailJsReady = true;
-  } else {
-    setTimeout(initEmailJS, 500);
-  }
-}
-initEmailJS();
 
 // ================================================================
 //  STATE GLOBAL
@@ -80,10 +62,7 @@ const state = {
   packets:    0,
   startTime:  Date.now(),
 
-  lastFireAlert:        0,
-  lastHeatAlert:        0,
-  loraOfflineSince:     null,
-  loraOfflineEmailSent: false,
+  loraOfflineSince: null,
 
   chartRange:  1,
   allHistory:  [],
@@ -151,9 +130,8 @@ setInterval(() => {
   const selisih = Date.now() - lastSensorTimestamp;
 
   if (selisih > SENSOR_TIMEOUT_MS && state.loraOnline) {
-    state.loraOnline           = false;
-    state.loraOfflineSince     = Date.now();
-    state.loraOfflineEmailSent = false;
+    state.loraOnline       = false;
+    state.loraOfflineSince = Date.now();
     updateLoraStatus(false, "lora");
     updateLedRow();
   }
@@ -168,17 +146,6 @@ setInterval(() => {
     const durStr = menit > 0 ? menit + "m " + detik + "d" : detik + "d";
 
     $("loraSince").textContent = "Offline selama " + durStr;
-
-    if (dur >= LORA_OFFLINE_EMAIL_MS && !state.loraOfflineEmailSent) {
-      state.loraOfflineEmailSent = true;
-      sendEmailAlert(
-        "PERINGATAN — KONEKSI LORA TERPUTUS",
-        "Koneksi LoRa E220 terputus!\n\nDurasi offline: " + durStr +
-        "\nWaktu: " + new Date().toLocaleString("id-ID") +
-        "\n\nSegera periksa perangkat LoRa pengirim."
-      );
-      showToast("LoRa offline >5 menit — email terkirim", "warn");
-    }
   }
 }, 5000);
 
@@ -196,7 +163,6 @@ async function loadLastData() {
     updateSuhuUI(cachedSuhu);
     updateApiUI(cachedApi, cachedSuhu);
 
-    // Langsung tampilkan min/max/avg dari cachedSuhu saat pertama load
     if (cachedSuhu > 0) {
       $("suhuMax24").textContent = cachedSuhu.toFixed(1) + "°";
       $("suhuMin24").textContent = cachedSuhu.toFixed(1) + "°";
@@ -275,9 +241,8 @@ function listenLatest() {
     lastSensorTimestamp = d.timestamp ? parseInt(d.timestamp) : Date.now();
 
     if (!state.loraOnline) {
-      state.loraOnline           = true;
-      state.loraOfflineSince     = null;
-      state.loraOfflineEmailSent = false;
+      state.loraOnline       = true;
+      state.loraOfflineSince = null;
     }
     setWifiStatus(true);
 
@@ -291,10 +256,13 @@ function listenLatest() {
       const now = new Date();
       $("apiLast").textContent = now.toLocaleString("id-ID",
         { dateStyle: "short", timeStyle: "short" });
+
+      // Tampilkan alert visual di dashboard (jika sedang dibuka)
+      // Email peringatan ditangani oleh Google Apps Script di server
+      showAlert("🔥", "API TERDETEKSI!", "Suhu: " + state.suhu.toFixed(1) + "°C");
     }
 
     updateSuhuStatsRealtime(state.suhu);
-    triggerAlerts(state.suhu, state.api);
 
     if (d.timestamp) {
       $("headerTime").textContent =
@@ -349,7 +317,6 @@ function listenHistory() {
 
 // ================================================================
 //  STATISTIK SUHU dari history + realtime
-//  FIX: fallback ke suhu realtime/cache jika rows24h kosong
 // ================================================================
 function computeStats(rows) {
   if (!rows.length) return;
@@ -358,7 +325,6 @@ function computeStats(rows) {
   const cut24h  = now - 86400000;
   const rows24h = rows.filter(r => r.timestamp >= cut24h);
 
-  // Nilai suhu aktif: prioritaskan realtime, fallback ke cache
   const suhuAktif = state.suhu > 0 ? state.suhu : cachedSuhu;
 
   if (rows24h.length) {
@@ -371,7 +337,6 @@ function computeStats(rows) {
       (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) + "°";
 
   } else if (suhuAktif > 0) {
-    // FIX: tidak ada history 24h tapi ada nilai aktif → tetap tampilkan
     $("suhuMax24").textContent = suhuAktif.toFixed(1) + "°";
     $("suhuMin24").textContent = suhuAktif.toFixed(1) + "°";
     $("suhuAvg24").textContent = suhuAktif.toFixed(1) + "°";
@@ -389,8 +354,6 @@ function computeStats(rows) {
 
 // ================================================================
 //  UPDATE MIN/MAX/AVG DARI DATA REALTIME
-//  FIX: gunakan (isNaN || ...) agar nilai pertama langsung masuk
-//  meskipun elemen HTML masih berisi "--"
 // ================================================================
 function updateSuhuStatsRealtime(suhu) {
   if (suhu <= 0) return;
@@ -402,14 +365,12 @@ function updateSuhuStatsRealtime(suhu) {
   const curMax = parseFloat(maxEl.textContent);
   const curMin = parseFloat(minEl.textContent);
 
-  // FIX: jika NaN (masih "--"), langsung set sebagai nilai pertama
   if (isNaN(curMax) || suhu > curMax)
     maxEl.textContent = suhu.toFixed(1) + "°";
 
   if (isNaN(curMin) || suhu < curMin)
     minEl.textContent = suhu.toFixed(1) + "°";
 
-  // Update avg dari realtime jika history belum ada
   if (!state.allHistory.length)
     avgEl.textContent = suhu.toFixed(1) + "°";
 }
@@ -511,35 +472,6 @@ function updateLedRow() {
   if (lledA && lledAT) {
     lledA.className    = emailList.length  ? "lled on"  : "lled";
     lledAT.textContent = emailList.length  + " penerima";
-  }
-}
-
-// ================================================================
-//  TRIGGER ALERTS (email bahaya)
-// ================================================================
-function triggerAlerts(suhu, api) {
-  const now = Date.now();
-
-  if (api === 1 && (now - state.lastFireAlert > ALERT_COOLDOWN_MS)) {
-    state.lastFireAlert = now;
-    sendEmailAlert(
-      "DARURAT — API TERDETEKSI",
-      "API TERDETEKSI oleh sensor LoRa!\n\nSuhu: " + suhu.toFixed(1) +
-      " C\nWaktu: " + new Date().toLocaleString("id-ID") +
-      "\n\nSegera periksa lokasi!"
-    );
-    showAlert("🔥", "API TERDETEKSI!",
-      "Suhu: " + suhu.toFixed(1) + "°C · Email ke " + emailList.length + " penerima");
-  }
-
-  if (suhu > 60 && api === 0 && (now - state.lastHeatAlert > ALERT_COOLDOWN_MS)) {
-    state.lastHeatAlert = now;
-    sendEmailAlert(
-      "PERINGATAN — SUHU TINGGI",
-      "Suhu melebihi batas aman!\n\nSuhu: " + suhu.toFixed(1) +
-      " C / Batas: 60 C\nWaktu: " + new Date().toLocaleString("id-ID")
-    );
-    showToast("Suhu " + suhu.toFixed(1) + "°C — email dikirim", "warn");
   }
 }
 
@@ -655,6 +587,7 @@ document.querySelectorAll(".ctab").forEach(btn => {
 
 // ================================================================
 //  EMAIL MANAGEMENT — tersimpan di Firebase /emails
+//  Daftar ini dibaca oleh Google Apps Script untuk kirim notifikasi
 // ================================================================
 function loadEmails() {
   onValue(ref(db, "emails"), snap => {
@@ -690,18 +623,13 @@ function renderEmailList() {
   });
 }
 
-//Tambahan verifikasi
+// Verifikasi admin sebelum tambah/hapus email
 const ADMIN_PASSWORD = "12345";
+
 window.addEmail = async () => {
-
   const password = prompt("Masukkan password admin");
+  if (password === null) return;
 
-  // JIKA BATAL
-  if (password === null) {
-    return;
-  }
-
-  // JIKA PASSWORD SALAH
   if (password !== ADMIN_PASSWORD) {
     alert("Password salah!");
     return;
@@ -714,32 +642,26 @@ window.addEmail = async () => {
   hint.textContent = "";
   hint.className = "eform-hint";
 
-  // VALIDASI KOSONG
   if (!email) {
     hint.textContent = "Masukkan alamat email.";
     hint.className = "eform-hint error";
     return;
   }
 
-  // VALIDASI FORMAT EMAIL
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     hint.textContent = "Format email tidak valid.";
     hint.className = "eform-hint error";
     return;
   }
 
-  // VALIDASI DUPLIKAT
   if (emailList.find(e => e.email === email)) {
     hint.textContent = "Email sudah ada.";
     hint.className = "eform-hint error";
     return;
   }
 
-  // SIMPAN KE FIREBASE
   try {
-
     await push(ref(db, "emails"), { email });
-
     inp.value = "";
 
     hint.textContent = "Tersimpan ke database!";
@@ -753,16 +675,14 @@ window.addEmail = async () => {
     }, 3000);
 
   } catch (err) {
-
     console.error(err);
-
     hint.textContent = "Gagal menyimpan email.";
     hint.className = "eform-hint error";
   }
 };
+
 window.removeEmail = async key => {
   const password = prompt("Masukkan password admin");
-
   if (password === null) return;
 
   if (password !== ADMIN_PASSWORD) {
@@ -778,48 +698,9 @@ window.removeEmail = async key => {
   }
 };
 
-
 $("emailInput").addEventListener("keydown", e => {
   if (e.key === "Enter") window.addEmail();
 });
-
-// ================================================================
-//  KIRIM EMAIL VIA EMAILJS
-// ================================================================
-function sendEmailAlert(subject, body) {
-  if (!emailJsReady) {
-    setTimeout(() => sendEmailAlert(subject, body), 1000); return;
-  }
-  if (!emailList.length) return;
-
-  emailList.forEach(item => {
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email:   item.email,
-      subject:    subject,
-      message:    body,
-      time:       new Date().toLocaleString("id-ID"),
-      suhu:       state.suhu.toFixed(1),
-      api_status: state.api === 1 ? "API TERDETEKSI" : "AMAN",
-    }).then(
-      ()  => console.log("[EmailJS] OK:", item.email),
-      err => console.error("[EmailJS] Gagal:", item.email, err)
-    );
-  });
-}
-
-window.sendTestEmail = () => {
-  if (!emailList.length) { showToast("Tambahkan email dulu.", "error"); return; }
-  if (!emailJsReady)     { showToast("EmailJS belum siap.", "warn");   return; }
-  sendEmailAlert(
-    "TEST — FireGuard Monitoring System",
-    "Email percobaan dari FireGuard.\n\nSuhu: " + state.suhu.toFixed(1) +
-    " C\nApi: "  + (state.api   === 1 ? "TERDETEKSI" : "AMAN") +
-    "\nLoRa: "   + (state.loraOnline ? "Online" : "Offline") +
-    "\nWiFi: "   + (state.wifiOnline ? "Online" : "Offline") +
-    "\nWaktu: "  + new Date().toLocaleString("id-ID")
-  );
-  showToast("Test email dikirim ke " + emailList.length + " penerima.", "success");
-};
 
 // ================================================================
 //  INIT
