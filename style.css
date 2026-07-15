@@ -409,7 +409,7 @@ body::after {
   padding: 3px 10px; border-radius: 3px;
   background: var(--cyan-dim); border: 1px solid rgba(0,255,224,.2); color: var(--cyan);
 }
-.email-body { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+.email-body { display: grid; grid-template-columns: 1fr 1fr; }
 .email-add-form { padding: 22px 24px; border-right: 1px solid var(--card-border); }
 .eform-label {
   font-family: var(--font-mono); font-size: .62rem; letter-spacing: 2px;
