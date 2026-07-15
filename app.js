@@ -145,7 +145,7 @@ setInterval(() => {
     const detik  = Math.floor((dur % 60000) / 1000);
     const durStr = menit > 0 ? menit + "m " + detik + "d" : detik + "d";
 
-    $("loraSince").textContent = "Offline selama " + durStr;
+    // $("loraSince").textContent = "Offline selama " + durStr;
   }
 }, 5000);
 
