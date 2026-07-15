@@ -105,11 +105,11 @@ function formatUptime(ms) {
   if (m > 0) return m + "m " + (s%60) + "d";
   return s + "d";
 }
-setInterval(() => {
-  const up = formatUptime(Date.now() - state.startTime);
-  $("lstatUptime").textContent  = up;
-  $("footerUptime").textContent = "Uptime: " + up;
-}, 1000);
+//setInterval(() => {
+ // const up = formatUptime(Date.now() - state.startTime);
+ // $("lstatUptime").textContent  = up;
+  //$("footerUptime").textContent = "Uptime: " + up;
+//}, 1000);
 
 setInterval(() => {
   $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
