@@ -1,23 +1,3 @@
-// ================================================================
-//  app.js — FireGuard Monitoring  (NO EMAILJS)
-//  Firebase Realtime Database
-//
-//  FITUR:
-//  - Data survive refresh (suhu, api, terakhir terdeteksi)
-//  - WiFi/LoRa status berdasarkan timestamp data ESP32
-//  - Min/Max/Avg suhu dari history + realtime
-//  - Terakhir terdeteksi disimpan ke /stats Firebase
-//  - Auto-cleanup history >7 hari
-//  - Tambah/hapus email penerima (untuk dibaca Google Apps Script)
-//
-//  CATATAN:
-//  - Email notifikasi (api terdeteksi, suhu >60C, LoRa offline)
-//    SUDAH DIPINDAH ke Google Apps Script yang jalan di server
-//    Google tiap 1 menit, supaya tetap terkirim walau web ditutup.
-//  - app.js ini HANYA untuk dashboard (tampilan) dan kelola daftar
-//    email (/emails), TIDAK lagi mengirim email sendiri.
-// ================================================================
-
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -38,21 +18,12 @@ const firebaseConfig = {
   appId:             "1:745925170634:web:297780122c17e7e986ab33"
 };
 
-// ================================================================
-//  KONFIGURASI TIMING
-// ================================================================
 const SENSOR_TIMEOUT_MS = 15000;  // 15 detik → LoRa OFFLINE
 const WIFI_TIMEOUT_MS   = 30000;  // 30 detik → WiFi ESP32 OFFLINE
 
-// ================================================================
-//  INIT FIREBASE
-// ================================================================
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// ================================================================
-//  STATE GLOBAL
-// ================================================================
 const state = {
   suhu:      0,
   api:       0,
@@ -73,9 +44,6 @@ let lastSensorTimestamp = null;
 let cachedSuhu          = 0;
 let cachedApi           = 0;
 
-// ================================================================
-//  DOM HELPER
-// ================================================================
 const $ = id => document.getElementById(id);
 
 function showToast(msg, type = "") {
@@ -116,9 +84,7 @@ setInterval(() => {
 }, 1000);
 $("headerTime").textContent = new Date().toLocaleTimeString("id-ID");
 
-// ================================================================
 //  DETEKSI STATUS WIFI & LORA — dari timestamp data ESP32
-// ================================================================
 function setWifiStatus(connected) {
   if (state.wifiOnline === connected) return;
   state.wifiOnline = connected;
@@ -147,9 +113,7 @@ setInterval(() => {
   }
 }, 5000);
 
-// ================================================================
 //  BACA DATA TERAKHIR SAAT HALAMAN DIBUKA (survive refresh)
-// ================================================================
 async function loadLastData() {
   try {
     const snap = await get(ref(db, "status/latest"));
@@ -187,9 +151,7 @@ async function loadLastData() {
   }
 }
 
-// ================================================================
 //  BACA & DENGARKAN /stats — hanya apiLastTime
-// ================================================================
 async function loadApiStats() {
   try {
     const snap = await get(ref(db, "stats"));
@@ -223,9 +185,7 @@ async function saveApiLastTime() {
   }
 }
 
-// ================================================================
 //  FIREBASE: LISTEN STATUS/LATEST (realtime)
-// ================================================================
 function listenLatest() {
   onValue(ref(db, "status/latest"), snap => {
     if (!snap.exists()) return;
@@ -255,8 +215,6 @@ function listenLatest() {
       $("apiLast").textContent = now.toLocaleString("id-ID",
         { dateStyle: "short", timeStyle: "short" });
 
-      // Tampilkan alert visual di dashboard (jika sedang dibuka)
-      // Email peringatan ditangani oleh Google Apps Script di server
       showAlert("🔥", "API TERDETEKSI!", "Suhu: " + state.suhu.toFixed(1) + "°C");
     }
 
@@ -271,9 +229,7 @@ function listenLatest() {
   });
 }
 
-// ================================================================
 //  FIREBASE: HISTORY
-// ================================================================
 function listenHistory() {
   const histRef = query(
     ref(db, "history"),
@@ -313,9 +269,7 @@ function listenHistory() {
   });
 }
 
-// ================================================================
 //  STATISTIK SUHU dari history + realtime
-// ================================================================
 function computeStats(rows) {
   if (!rows.length) return;
 
@@ -350,9 +304,7 @@ function computeStats(rows) {
   }
 }
 
-// ================================================================
 //  UPDATE MIN/MAX/AVG DARI DATA REALTIME
-// ================================================================
 function updateSuhuStatsRealtime(suhu) {
   if (suhu <= 0) return;
 
@@ -373,9 +325,7 @@ function updateSuhuStatsRealtime(suhu) {
     avgEl.textContent = suhu.toFixed(1) + "°";
 }
 
-// ================================================================
 //  UPDATE UI: SUHU
-// ================================================================
 function updateSuhuUI(suhu) {
   $("gaugeVal").textContent = suhu.toFixed(1);
   const pct = Math.min(suhu / 100, 1);
