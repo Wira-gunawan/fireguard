@@ -5,24 +5,24 @@
   --card-border:  #D5DEE8;
   --card-border2: #B9C7D6;
 
-  --cyan:         #008F8A;
-  --cyan2:        #1976A8;
+  --cyan:         #007C78;
+  --cyan2:        #176B87;
   --cyan-dim:     rgba(0, 143, 138, 0.12);
   --cyan-glow:    0 0 20px rgba(0, 143, 138, 0.22);
 
-  --orange:       #D97706;
+  --orange:       #B85C00;
   --orange-dim:   rgba(217, 119, 6, 0.12);
 
-  --red:          #D32F2F;
+  --red:          #C62828;
   --red-dim:      rgba(211, 47, 47, 0.12);
   --red-glow:     0 0 30px rgba(211, 47, 47, 0.22);
 
-  --green:        #0A9F5B;
+  --green:        #087A46;
   --green-dim:    rgba(10, 159, 91, 0.12);
 
-  --text:         #243B53;
-  --text-muted:   #52677D;
-  --text-dim:     #718096;
+  --text:         #16324F;
+  --text-muted:   #334E68;
+  --text-dim:     #526581;
 
   --font-display: 'Bebas Neue', sans-serif;
   --font-mono:    'Share Tech Mono', monospace;
