@@ -374,7 +374,7 @@ body::after {
   font-family: var(--font-mono); font-size: .95rem; color: var(--text-muted);
 }
 .cleg-line { width: 20px; height: 2px; border-radius: 1px; display: inline-block; }
-.cleg-line.normal  { background: var(--cyan); }
+.cleg-line.normal  { background: #00ffe0; }
 .cleg-line.warn    { background: var(--orange); }
 .cleg-line.danger  { background: var(--red); }
 .cleg-dot  { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
